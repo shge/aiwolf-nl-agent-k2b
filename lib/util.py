@@ -11,24 +11,24 @@ def read_text(path:str):
 def random_select(data:list):
     return random.choice(data)
 
-def is_json_complate(responces:bytes) -> bool:
+def is_json_complete(responses:bytes) -> bool:
 
     try:
-        responces = responces.decode("utf-8")
+        responses = responses.decode("utf-8")
     except:
         return False
-    
-    if responces == "":
+
+    if responses == "":
         return False
 
     cnt = 0
 
-    for word in responces:
+    for word in responses:
         if word == "{":
             cnt += 1
         elif word == "}":
             cnt -= 1
-    
+
     return cnt == 0
 
 def init_role(agent:player.agent.Agent, config_path:str, name:str):
@@ -49,5 +49,5 @@ def check_config(config_path:str) -> configparser.ConfigParser:
 
     if not os.path.exists(config_path):
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), config_path)
-    
+
     return configparser.ConfigParser()

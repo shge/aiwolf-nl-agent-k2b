@@ -14,22 +14,22 @@ class Client:
         self.port = int(inifile.get("connection","port"))
         self.buffer = int(inifile.get("connection","buffer"))
 
-    def connet(self) -> None:
+    def connect(self) -> None:
         self.socket.connect((self.host,self.port))
-    
+
     def receive(self) -> str:
         responses = b""
 
-        while not util.is_json_complate(responces=responses):
+        while not util.is_json_complete(responses=responses):
             response = self.socket.recv(self.buffer)
-            
+
             if response == b"":
                 raise RuntimeError("socket connection broken")
-            
+
             responses += response
 
         return responses.decode("utf-8")
-    
+
     def send(self, message:str) -> None:
         message += "\n"
 
