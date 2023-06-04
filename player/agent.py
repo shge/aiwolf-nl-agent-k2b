@@ -4,6 +4,19 @@ from lib import util, log
 ROLE_JAPANESE = {"VILLAGER": "村人", "WEREWOLF": "人狼",
                  "SEER": "占い師", "POSSESSED": "狂人"}
 
+ROLE_TIPS = {
+    "VILLAGER": """You have no special abilities.
+You have to find WEREWOLF and execute him.
+Think logically and find out who is lying.""",
+    "SEER": """You can divine one player per night.
+On Day 0, you divined Agent[0*] and found out he was WEREWOLF.
+You must persuade other players to execute him.""",
+    "WEREWOLF": """You must not let other players know you are WEREWOLF.
+You have to deceive other players and survive.""",
+    "POSSESSED": """If there are zero or one player claiming SEER, you should pretend to be SEER.
+If there are two or more players claiming SEER, you should pretend to be VILLAGER."""
+}
+
 logger = log.get_logger(__name__)
 
 
@@ -12,6 +25,7 @@ class Agent:
         self.name = name
         self.received = []
         self.gameContinue = True
+        self.is_greeting_done = False
 
         inifile = util.check_config(config_path=config_path)
         inifile.read(config_path, "UTF-8")
@@ -37,11 +51,14 @@ class Agent:
     def get_info(self):
         data = json.loads(self.received.pop(0))
 
-        self.gameInfo = data["gameInfo"]
-        self.gameSetting = data["gameSetting"]
+        if data["gameInfo"]:
+            self.gameInfo = data["gameInfo"]
+        if data["gameSetting"]:
+            self.gameSetting = data["gameSetting"]
         self.request = data["request"]
         self.talkHistory = data["talkHistory"] or []
         self.whisperHistory = data["whisperHistory"]
+        logger.debug(f"Received: {data}")
         for talk in self.talkHistory:
             logger.info(f"Agent[0{talk['agent']}]: {talk['text']}")
 
@@ -103,7 +120,17 @@ class Agent:
         return self.role
 
     def talk(self) -> str:
-        return util.random_select(self.comments)
+        if self.gameInfo["day"] == 0:
+            if self.is_greeting_done:
+                return "Over"
+            else:
+                return self.talk_day0()
+        # return util.random_select(self.comments)
+        return self.make_prompt()
+
+    def talk_day0(self) -> str:
+        self.is_greeting_done = True
+        return util.random_select(util.read_text("./res/greeting.csv")).split(",")[1]
 
     def vote(self) -> str:
         print("GM: Now, vote for the agent you want to execute.")
@@ -187,3 +214,44 @@ class Agent:
         # initialize
         new_agent.index = self.index
         new_agent.role = self.role
+
+    def make_prompt(self) -> str:
+        alive_with_self = self.alive.copy()
+        alive_with_self.append(self.index)
+        alive_with_self.sort()
+        talk_history = ""
+        for talk in self.talkHistory:
+            talk_history += f"Agent[0{talk['agent']}]: {talk['text']}\n"
+
+        prompt = f"""Act as a player in the werewolf game.
+# Rules
+There are five players in this game, two VILLAGERs (村人), one SEER (占い師), one WEREWOLF (人狼), and one POSSESSED (狂人).
+VILLAGER and SEER are on the villager team (村人陣営), and the WEREWOLF and POSSESSED are on the werewolf team (人狼陣営).
+SEER can divine the role of one player every day, and usually tells the result to the other players. (黒出し for WEREWOLF, 白出し for others)
+Players can vote for one player to be executed every day. The player with the most votes will be executed.
+WEREWOLF can kill one player every night.
+Players can fake their role, but they must not tell their real role.
+
+# Info
+Your name is Agent[0{self.index}]. Your role is {self.role} ({ROLE_JAPANESE[self.role]}).
+Now, the game is in Day {self.gameInfo['day']}.
+Alive players: {', '.join(map(lambda x: f'Agent[0{x}]', alive_with_self))}
+
+Here are the talk history. GM is the game master.
+
+# Talk history
+
+{talk_history}
+
+Make a statement to persuade other players logically based on others' statements.
+Speak casually but confidently in Japanese. Answer must be concise and less than 150 characters.
+
+# Tips about your role: {self.role} ({ROLE_JAPANESE[self.role]})
+{ROLE_TIPS[self.role]}
+
+Now, make a output in the following format:
+Agent[0{self.index}]: [Your statement]
+"""
+        simplified_prompt =util.simplify_agent_name(prompt)
+        answer = util.gpt(simplified_prompt, max_tokens=150)
+        return util.restore_agent_name(answer)

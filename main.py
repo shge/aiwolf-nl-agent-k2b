@@ -1,9 +1,9 @@
 import lib
 import player
 
+logger = lib.log.get_logger(__name__)
 
 def main(config_path: str, name: str):
-    logger = lib.log.get_logger(__name__)
 
     client = lib.client.Client(config_path=config_path)
     logger.debug(f"Connecting to {client.host}:{client.port}...")
@@ -20,7 +20,11 @@ def main(config_path: str, name: str):
 
         # receivedキューに入っていなかったら入れる
         if len(agent.received) == 0:
-            agent.parse_info(receive=client.receive())
+            try:
+                agent.parse_info(receive=client.receive())
+            except ConnectionResetError:
+                logger.error("Connection reset by peer.")
+                return
 
         # receivedキューから情報を取り出す
         agent.get_info()
@@ -45,4 +49,8 @@ if __name__ == "__main__":
     inifile = lib.util.check_config(config_path=config_path)
     inifile.read(config_path, "UTF-8")
 
-    main(config_path=config_path, name=inifile.get("agent", "name"))
+    try:
+        main(config_path=config_path, name=inifile.get("agent", "name"))
+    except KeyboardInterrupt:
+        print()
+        logger.info("KeyboardInterrupt")
