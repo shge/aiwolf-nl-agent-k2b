@@ -4,19 +4,6 @@ from lib import util, log
 ROLE_JAPANESE = {"VILLAGER": "村人", "WEREWOLF": "人狼",
                  "SEER": "占い師", "POSSESSED": "狂人"}
 
-ROLE_TIPS = {
-    "VILLAGER": """You have no special abilities.
-You have to find WEREWOLF and execute him.
-Think logically and find out who is lying.""",
-    "SEER": """You can divine one player per night.
-On Day 0, you divined Agent[0*] and found out he was WEREWOLF.
-You must persuade other players to execute him.""",
-    "WEREWOLF": """You must not let other players know you are WEREWOLF.
-You have to deceive other players and survive.""",
-    "POSSESSED": """If there are zero or one player claiming SEER, you should pretend to be SEER.
-If there are two or more players claiming SEER, you should pretend to be VILLAGER."""
-}
-
 logger = log.get_logger(__name__)
 
 
@@ -223,11 +210,12 @@ class Agent:
         for talk in self.talkHistory:
             talk_history += f"Agent[0{talk['agent']}]: {talk['text']}\n"
 
-        prompt = f"""Act as a player in the werewolf game.
+        prompt = f"""Act as a player in the werewolf game in Japanese.
 # Rules
 There are five players in this game, two VILLAGERs (村人), one SEER (占い師), one WEREWOLF (人狼), and one POSSESSED (狂人).
 VILLAGER and SEER are on the villager team (村人陣営), and the WEREWOLF and POSSESSED are on the werewolf team (人狼陣営).
 SEER can divine the role of one player every day, and usually tells the result to the other players. (黒出し for WEREWOLF, 白出し for others)
+If there is only one player claiming SEER, don't just trust yet. Usually two or more players claim SEER.
 Players can vote for one player to be executed every day. The player with the most votes will be executed.
 WEREWOLF can kill one player every night.
 Players can fake their role, but they must not tell their real role.
@@ -247,11 +235,46 @@ Make a statement to persuade other players logically based on others' statements
 Speak casually but confidently in Japanese. Answer must be concise and less than 150 characters.
 
 # Tips about your role: {self.role} ({ROLE_JAPANESE[self.role]})
-{ROLE_TIPS[self.role]}
+{self.make_tips()}
 
 Now, make a output in the following format:
-Agent[0{self.index}]: [Your statement]
+Agent[0{self.index}]: [Your statement in Japanese (No English translation)]
 """
         simplified_prompt =util.simplify_agent_name(prompt)
-        answer = util.gpt(simplified_prompt, max_tokens=150)
+        print("===========================================")
+        print(simplified_prompt)
+        print("===========================================")
+        answer = util.gpt(simplified_prompt, max_tokens=150, model="gpt-4")
         return util.restore_agent_name(answer)
+
+    def make_tips(self) -> str:
+        if self.role == "VILLAGER":
+            return """You have no special abilities.
+You have to find WEREWOLF and execute him.
+Think logically and find out who is lying."""
+
+        elif self.role == "SEER":
+            divineResult = self.gameInfo["divineResult"]
+            if divineResult:
+                text = f"""You can divine one player per night.
+On Day {divineResult["day"]}, you divined Agent[0{divineResult["target"]}] and found out he was {divineResult["result"]}.
+"""
+                if divineResult["result"] == "WEREWOLF":
+                    text += "You should tell results and persuade players to execute him."
+                else:
+                    text += "You should tell results and persuade players not to execute him."
+                return text
+            else:
+                return "You can divine one player per night."
+
+        elif self.role == "WEREWOLF":
+            return """You must not let other players know you are WEREWOLF.
+You have to deceive other players and survive."""
+
+        elif self.role == "POSSESSED":
+            return """If there are zero or one player claiming SEER, you should pretend to be SEER.
+If there are two or more players claiming SEER, you should pretend to be VILLAGER."""
+
+        else:
+            logger.error(f"Invalid role: {self.role}")
+            return ""
