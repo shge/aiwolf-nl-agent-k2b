@@ -1,3 +1,4 @@
+import json
 import os
 import errno
 import configparser
@@ -5,6 +6,7 @@ import random
 import player
 import re
 import openai
+from retry import retry
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -80,11 +82,12 @@ def restore_agent_name(text: str) -> str:
     return re.sub(r"\[(\d)\]", r"Agent[0\1]", text)
 
 
+@retry(tries=2, delay=3)
 def gpt(
     prompt: str,
     model: str = "gpt-3.5-turbo",
     stream: bool = True,
-    max_tokens: int = 4096,
+    max_tokens = None,
     temperature: float = 0.7,  # 0.0 to 2.0
     top_p: float = 1.0,  # 0.0 to 1.0
     frequency_penalty: float = 0.0,  # -2.0 to 2.0
@@ -116,3 +119,41 @@ def gpt(
         return output_text
     else:
         return res.choices[0].message.content  # type: ignore
+
+@retry(tries=2, delay=3)
+def choose_agent(
+    prompt: str,
+    agents: list[int],
+    model: str = "gpt-3.5-turbo",
+    **kwargs
+) -> str:
+
+    res = openai.ChatCompletion.create(
+        messages=[{"role": "user", "content": prompt}],
+        model=model,
+        functions=[
+            {
+                "name": "choose_player",
+                "description": "Choose an player from the list",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "player_number": {
+                            "type": "integer",
+                            "description": "Player number to choose",
+                            "enum": agents
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Reason for choosing the player if any"
+                        }
+                    },
+                    "required": ["player_number"],
+                }
+            }
+        ],
+        function_call={"name": "choose_player"},
+        **kwargs
+    )
+    print(json.loads(res.choices[0].message.function_call.arguments))
+    return json.loads(res.choices[0].message.function_call.arguments).get("player_number")

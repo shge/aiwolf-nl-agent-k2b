@@ -40,6 +40,7 @@ def main(config_path: str, name: str):
             client.send(message=message)
             logger.debug(f"Sent: {message}")
 
+    print("Closing...")
     client.close()
 
 
